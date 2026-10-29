@@ -1,0 +1,113 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assignment Submission Portal</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f1f5f9;
+            margin: 0;
+            padding: 30px 15px;
+        }
+        .container {
+            max-width: 600px;
+            margin: auto;
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px #0001;
+        }
+        h1 { color: #1d4ed8; }
+        label {
+            display: block;
+            margin-top: 15px;
+        }
+        input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 11px;
+            margin-top: 6px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+        }
+        button {
+            margin-top: 20px;
+            padding: 12px 18px;
+            background: #1d4ed8;
+            color: white;
+            border: 0;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .note { color: #64748b; font-size: 14px; }
+        li { margin: 12px 0; overflow-wrap: anywhere; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Assignment Submission Portal</h1>
+    <p class="note">Static demo for the CSC418 DevOps midterm.</p>
+
+    <form id="submissionForm">
+        <label for="name">Student Name</label>
+        <input id="name" required>
+
+        <label for="registration">Registration Number</label>
+        <input id="registration" required>
+
+        <label for="title">Assignment Title</label>
+        <input id="title" required>
+
+        <label for="url">Submission URL</label>
+        <input id="url" type="url" placeholder="https://github.com/..." required>
+
+        <button type="submit">Add Demo Submission</button>
+    </form>
+
+    <h2>Demo Submissions</h2>
+    <p class="note">Demo entries are stored only in this browser session.</p>
+    <ul id="submissions"></ul>
+    <p id="message" role="status"></p>
+</div>
+
+<script>
+const form = document.getElementById("submissionForm");
+const list = document.getElementById("submissions");
+const message = document.getElementById("message");
+
+form.addEventListener("submit", function(event) {
+    event.preventDefault();
+
+    const name = document.getElementById("name").value.trim();
+    const registration = document.getElementById("registration").value.trim();
+    const title = document.getElementById("title").value.trim();
+    const url = document.getElementById("url").value.trim();
+
+    if (!name || !registration || !title || !url) {
+        message.textContent = "Please complete all fields.";
+        return;
+    }
+
+    try {
+        const parsedUrl = new URL(url);
+        if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+            throw new Error("Invalid URL");
+        }
+    } catch {
+        message.textContent = "Please enter a valid HTTP or HTTPS URL.";
+        return;
+    }
+
+    const item = document.createElement("li");
+    item.textContent = `${name} (${registration}) — ${title} — ${url}`;
+    list.appendChild(item);
+
+    message.textContent = "Demo submission added successfully.";
+    form.reset();
+});
+</script>
+</body>
+</html>
