@@ -1,0 +1,8 @@
+{
+    "project": "Assignment Submission Portal",
+    "test_command": "pytest -v",
+    "exit_code": 0,
+    "status": "passed",
+    "stdout": "============================= test session starts =============================\nplatform win32 -- Python 3.14.7, pytest-9.2.0, pluggy-1.7.0 -- C:\\Users\\lenovo\\Desktop\\assignment-submission-portal\\venv\\Scripts\\python.exe\ncachedir: .pytest_cache\nrootdir: C:\\Users\\lenovo\\Desktop\\assignment-submission-portal\ncollecting ... collected 4 items\n\ntest_app.py::test_home_page_loads PASSED                                 [ 25%]\ntest_app.py::test_valid_submission_is_saved_and_displayed PASSED         [ 50%]\ntest_app.py::test_missing_registration_number_is_rejected PASSED         [ 75%]\ntest_app.py::test_invalid_submission_url_is_rejected PASSED              [100%]\n\n============================== 4 passed in 0.43s ==============================\n",
+    "stderr": ""
+}
