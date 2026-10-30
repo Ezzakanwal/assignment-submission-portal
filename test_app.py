@@ -23,8 +23,7 @@ def test_valid_submission_is_saved_and_displayed():
             follow_redirects=True,
         )
 
-        # Intentional error for failing test demonstration
-        assert response.status_code == 201
+        assert response.status_code == 200
         assert len(submissions) == 1
 
     submissions.clear()
