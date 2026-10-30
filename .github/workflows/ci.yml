@@ -20,14 +20,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python and install dependencies
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
         shell: powershell
         run: |
           python --version
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install -r requirements.txt
 
-      - name: Run tests and generate JSON report
+      - name: Run tests and generate CI report
         id: tests
         shell: powershell
         continue-on-error: true
@@ -35,51 +40,74 @@ jobs:
           python -m pytest -v --json-report --json-report-file=test-results.json
           $testExit = $LASTEXITCODE
 
-          "exit_code=$testExit" >> $env:GITHUB_OUTPUT
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "exit_code=$testExit"
           $env:TEST_EXIT = "$testExit"
 
-          python -c @'
+          @'
           import json
           import os
           from datetime import datetime, timezone
+          from pathlib import Path
 
-          with open("test-results.json", encoding="utf-8") as f:
-              data = json.load(f)
-
-          summary = data.get("summary", {})
+          results_file = Path("test-results.json")
           details = []
+          total = passed = failed = 0
 
-          for item in data.get("tests", []):
-              call = item.get("call", {})
-              crash = call.get("crash", {})
+          if results_file.exists():
+              try:
+                  data = json.loads(results_file.read_text(encoding="utf-8"))
+                  summary = data.get("summary", {})
+                  total = summary.get("total", 0)
+                  passed = summary.get("passed", 0)
+                  failed = summary.get("failed", 0)
+
+                  for item in data.get("tests", []):
+                      call = item.get("call", {})
+                      crash = call.get("crash", {})
+                      details.append({
+                          "name": item.get("nodeid", "Unknown test"),
+                          "result": item.get("outcome", "unknown"),
+                          "failure_message": (
+                              crash.get("message")
+                              or call.get("longrepr")
+                              or ""
+                          )
+                      })
+              except Exception as error:
+                  details.append({
+                      "name": "Report parsing",
+                      "result": "failed",
+                      "failure_message": str(error)
+                  })
+          else:
               details.append({
-                  "name": item.get("nodeid", "Unknown test"),
-                  "result": item.get("outcome", "unknown"),
-                  "failure_message": (
-                      crash.get("message")
-                      or call.get("longrepr")
-                      or ""
-                  )
+                  "name": "Pytest execution",
+                  "result": "failed",
+                  "failure_message": "Pytest did not generate a JSON results file."
               })
 
           report = {
-              "repository": os.environ["GITHUB_REPOSITORY"],
-              "branch": os.environ["GITHUB_REF_NAME"],
-              "commit_sha": os.environ["GITHUB_SHA"],
-              "pipeline_run_id": os.environ["GITHUB_RUN_ID"],
+              "repository": os.environ.get("GITHUB_REPOSITORY", ""),
+              "branch": os.environ.get("GITHUB_REF_NAME", ""),
+              "commit_sha": os.environ.get("GITHUB_SHA", ""),
+              "pipeline_run_id": os.environ.get("GITHUB_RUN_ID", ""),
               "execution_timestamp": datetime.now(timezone.utc).isoformat(),
               "tests": details,
-              "total": summary.get("total", 0),
-              "passed": summary.get("passed", 0),
-              "failed": summary.get("failed", 0),
+              "total": total,
+              "passed": passed,
+              "failed": failed,
               "overall_status": (
-                  "passed" if os.environ["TEST_EXIT"] == "0" else "failed"
+                  "passed" if os.environ.get("TEST_EXIT") == "0" else "failed"
               )
           }
 
-          with open("test-report.json", "w", encoding="utf-8") as f:
-              json.dump(report, f, indent=4)
-          '@
+          Path("test-report.json").write_text(
+              json.dumps(report, indent=4),
+              encoding="utf-8"
+          )
+
+          print(json.dumps(report, indent=4))
+          '@ | python -
 
       - name: Send report to local receiver
         if: always()
@@ -92,7 +120,9 @@ jobs:
                 -ContentType "application/json" `
                 -InFile "test-report.json"
 
-              Write-Host "Local JSON report received successfully."
+              Write-Host "Local CI report sent successfully."
+          } else {
+              Write-Error "CI report file was not generated."
           }
 
       - name: Email test report
