@@ -1,5 +1,5 @@
 
-name: Flask Tests and Conditional Deployment
+name: Flask Tests, Email Report and Conditional Deployment
 
 on:
   push:
@@ -15,6 +15,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -29,13 +30,91 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run automated tests
-        run: python -m pytest -v
+      - name: Run tests and generate JSON report
+        id: tests
+        run: |
+          set +e
+          python -m pytest -v --json-report --json-report-file=test-results.json
+          TEST_EXIT=$?
+          echo "exit_code=$TEST_EXIT" >> "$GITHUB_OUTPUT"
+
+          export TEST_EXIT
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+
+          with open("test-results.json", encoding="utf-8") as f:
+              data = json.load(f)
+
+          summary = data.get("summary", {})
+          test_details = []
+
+          for item in data.get("tests", []):
+              call = item.get("call", {})
+              crash = call.get("crash", {})
+              test_details.append({
+                  "name": item.get("nodeid", "Unknown test"),
+                  "result": item.get("outcome", "unknown"),
+                  "failure_message": (
+                      crash.get("message")
+                      or call.get("longrepr")
+                      or ""
+                  )
+              })
+
+          report = {
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "branch": os.environ["GITHUB_REF_NAME"],
+              "commit_sha": os.environ["GITHUB_SHA"],
+              "pipeline_run_id": os.environ["GITHUB_RUN_ID"],
+              "execution_timestamp": datetime.now(timezone.utc).isoformat(),
+              "tests": test_details,
+              "total": summary.get("total", 0),
+              "passed": summary.get("passed", 0),
+              "failed": summary.get("failed", 0),
+              "overall_status": (
+                  "passed" if os.environ["TEST_EXIT"] == "0" else "failed"
+              )
+          }
+
+          with open("test-report.json", "w", encoding="utf-8") as f:
+              json.dump(report, f, indent=4)
+          PY
+
+      - name: Email test report
+        if: always()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.EMAIL_ADDRESS }}
+          password: ${{ secrets.EMAIL_APP_PASSWORD }}
+          subject: "Test Report - ${{ steps.tests.outputs.exit_code == '0' && 'PASSED' || 'FAILED' }} - ${{ github.sha }}"
+          to: ${{ secrets.EMAIL_ADDRESS }}
+          from: ${{ secrets.EMAIL_ADDRESS }}
+          body: |
+            Assignment Submission Portal Test Report
+
+            Repository: ${{ github.repository }}
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            Pipeline Run: ${{ github.run_id }}
+            Test Exit Code: ${{ steps.tests.outputs.exit_code }}
+
+            The detailed JSON report is attached.
+          attachments: test-report.json
+
+      - name: Fail workflow if tests failed
+        if: steps.tests.outputs.exit_code != '0'
+        run: exit 1
 
   deploy:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
