@@ -14,32 +14,31 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
+      - name: Set up Python and install dependencies
+        shell: powershell
         run: |
+          python --version
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: Run tests and generate JSON report
         id: tests
+        shell: powershell
+        continue-on-error: true
         run: |
-          set +e
           python -m pytest -v --json-report --json-report-file=test-results.json
-          TEST_EXIT=$?
-          echo "exit_code=$TEST_EXIT" >> "$GITHUB_OUTPUT"
+          $testExit = $LASTEXITCODE
 
-          export TEST_EXIT
-          python - <<'PY'
+          "exit_code=$testExit" >> $env:GITHUB_OUTPUT
+          $env:TEST_EXIT = "$testExit"
+
+          python -c @'
           import json
           import os
           from datetime import datetime, timezone
@@ -48,12 +47,12 @@ jobs:
               data = json.load(f)
 
           summary = data.get("summary", {})
-          test_details = []
+          details = []
 
           for item in data.get("tests", []):
               call = item.get("call", {})
               crash = call.get("crash", {})
-              test_details.append({
+              details.append({
                   "name": item.get("nodeid", "Unknown test"),
                   "result": item.get("outcome", "unknown"),
                   "failure_message": (
@@ -69,7 +68,7 @@ jobs:
               "commit_sha": os.environ["GITHUB_SHA"],
               "pipeline_run_id": os.environ["GITHUB_RUN_ID"],
               "execution_timestamp": datetime.now(timezone.utc).isoformat(),
-              "tests": test_details,
+              "tests": details,
               "total": summary.get("total", 0),
               "passed": summary.get("passed", 0),
               "failed": summary.get("failed", 0),
@@ -80,7 +79,21 @@ jobs:
 
           with open("test-report.json", "w", encoding="utf-8") as f:
               json.dump(report, f, indent=4)
-          PY
+          '@
+
+      - name: Send report to local receiver
+        if: always()
+        shell: powershell
+        run: |
+          if (Test-Path "test-report.json") {
+              Invoke-RestMethod `
+                -Uri "http://127.0.0.1:5001/report" `
+                -Method Post `
+                -ContentType "application/json" `
+                -InFile "test-report.json"
+
+              Write-Host "Local JSON report received successfully."
+          }
 
       - name: Email test report
         if: always()
@@ -103,11 +116,12 @@ jobs:
             Pipeline Run: ${{ github.run_id }}
             Test Exit Code: ${{ steps.tests.outputs.exit_code }}
 
-            The detailed JSON report is attached.
+            Detailed JSON report is attached.
           attachments: test-report.json
 
       - name: Fail workflow if tests failed
         if: steps.tests.outputs.exit_code != '0'
+        shell: powershell
         run: exit 1
 
   deploy:
