@@ -5,7 +5,6 @@ from app import app, submissions
 def test_home_page_loads():
     with app.test_client() as client:
         response = client.get("/")
-
         assert response.status_code == 200
 
 
@@ -24,7 +23,8 @@ def test_valid_submission_is_saved_and_displayed():
             follow_redirects=True,
         )
 
-        assert response.status_code == 200
+        # Intentional error for failing test demonstration
+        assert response.status_code == 201
         assert len(submissions) == 1
 
     submissions.clear()
